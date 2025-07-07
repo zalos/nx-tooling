@@ -1,0 +1,43 @@
+{
+  "name": "nx-tooling",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "prefix": "app",
+  "sourceRoot": "apps/nx-tooling/src",
+  "tags": [],
+  "targets": {
+    "extract-i18n": {
+      "executor": "@angular-devkit/build-angular:extract-i18n",
+      "options": {
+        "buildTarget": "nx-tooling:build"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint"
+    },
+    "serve-static": {
+      "continuous": true,
+      "executor": "@nx/web:file-server",
+      "options": {
+        "buildTarget": "nx-tooling:build",
+        "port": 4200,
+        "spa": true
+      }
+    },
+    "serve-ssr": {
+      "continuous": true,
+      "executor": "@angular-devkit/build-angular:ssr-dev-server",
+      "configurations": {
+        "development": {
+          "browserTarget": "nx-tooling:build:development",
+          "serverTarget": "nx-tooling:server:development"
+        },
+        "production": {
+          "browserTarget": "nx-tooling:build:production",
+          "serverTarget": "nx-tooling:server:production"
+        }
+      },
+      "defaultConfiguration": "development"
+    }
+  }
+}
