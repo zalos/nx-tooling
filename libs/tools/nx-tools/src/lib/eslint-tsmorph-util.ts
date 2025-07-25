@@ -1,17 +1,34 @@
 
 import { Tree } from '@nx/devkit';
-import { Project, SourceFile, SyntaxKind, Node, ArrayLiteralExpression, ObjectLiteralExpression, PropertyAssignment } from 'ts-morph';
+import { Project, SourceFile, SyntaxKind, Node, ArrayLiteralExpression, ObjectLiteralExpression, PropertyAssignment, CallExpression } from 'ts-morph';
 
+/** 
+ * ESLint rule configuration value types.
+ * Can be a simple string/number/boolean, an array with severity and options, or a complex object.
+ */
 export type EslintRuleConfig = string | number | boolean | [string, ...unknown[]] | Record<string, unknown>;
 
+/**
+ * ESLint flat configuration object structure.
+ * Represents a single configuration entry in the ESLint flat config array.
+ */
 export interface EslintConfigObject {
+  /** File patterns this configuration applies to */
   files?: string[];
+  /** File patterns this configuration ignores */
   ignores?: string[];
+  /** ESLint rules for this configuration */
   rules?: Record<string, EslintRuleConfig>;
+  /** Language-specific options (parser, parserOptions, etc.) */
   languageOptions?: Record<string, unknown>;
+  /** Additional configuration properties (plugins, extends, etc.) */
   [key: string]: unknown;
 }
 
+/**
+ * Core operations interface for ESLint configuration management.
+ * Defines the essential methods for manipulating ESLint flat configurations.
+ */
 export interface EslintConfigOperations {
   addOrUpdateConfig(config: EslintConfigObject): void;
   removeConfig(filePattern: string[]): void;
@@ -27,18 +44,75 @@ export interface EslintConfigOperations {
 }
 
 /**
- * Utility class for manipulating ESLint flat config files using TSMorph
- * Supports both Nx Tree and TSMorph SourceFile inputs
+ * Advanced utility class for programmatically manipulating ESLint flat configuration files using TSMorph AST manipulation.
+ * 
+ * This class provides comprehensive support for:
+ * - Reading and parsing existing ESLint flat configurations
+ * - Adding, updating, and removing configuration objects
+ * - Managing individual rules within configurations  
+ * - Handling spread operators at both config and rules levels
+ * - Bulk operations and preset configurations
+ * - Integration with Nx workspace file operations
+ * 
+ * @example
+ * ```typescript
+ * // Initialize with Nx Tree for workspace integration
+ * const eslintUtil = new EslintTsMorphUtil(tree, 'eslint.config.mjs');
+ * 
+ * // Add Playwright configuration with spread operators
+ * eslintUtil.addOrUpdateConfig({
+ *   '...playwright.configs[\'flat/recommended\']': true,
+ *   files: ['tests/**'],
+ *   rules: {
+ *     '...playwright.configs[\'flat/recommended\'].rules': true,
+ *     'playwright/expect-expect': 'error'
+ *   }
+ * });
+ * 
+ * eslintUtil.save();
+ * ```
+ * 
+ * @example  
+ * ```typescript
+ * // Initialize with TSMorph SourceFile for direct manipulation
+ * const eslintUtil = new EslintTsMorphUtil(sourceFile, 'eslint.config.ts');
+ * 
+ * // Add custom rule
+ * eslintUtil.addRule(['**\/*.ts'], '@typescript-eslint/no-unused-vars', 'error');
+ * 
+ * // Add multiple rules via configuration object
+ * eslintUtil.addOrUpdateConfig({
+ *   files: ['**\/*.ts', '**\/*.tsx'],
+ *   rules: {
+ *     '@typescript-eslint/explicit-function-return-type': 'off',
+ *     '@typescript-eslint/no-explicit-any': 'warn'
+ *   }
+ * });
+ * ```
  */
 export class EslintTsMorphUtil implements EslintConfigOperations {
-  private sourceFile: SourceFile;
-  private project: Project;
-  private tree?: Tree;
-  private filePath: string;
+  private readonly sourceFile: SourceFile;
+  private readonly project: Project;
+  private readonly tree?: Tree;
+  private readonly filePath: string;
   private configArray?: ArrayLiteralExpression;
 
+  /**
+   * Creates a new EslintTsMorphUtil instance.
+   * 
+   * @param sourceFile - TSMorph SourceFile for direct AST manipulation
+   * @param filePath - Path to the ESLint configuration file
+   */
   constructor(sourceFile: SourceFile, filePath: string);
+  
+  /**
+   * Creates a new EslintTsMorphUtil instance.
+   * 
+   * @param tree - Nx Tree for workspace file operations
+   * @param filePath - Path to the ESLint configuration file
+   */
   constructor(tree: Tree, filePath: string);
+  
   constructor(sourceFileOrTree: SourceFile | Tree, filePath: string) {
     this.filePath = filePath;
     
@@ -50,38 +124,51 @@ export class EslintTsMorphUtil implements EslintConfigOperations {
       this.project = new Project();
       
       // Read file content from tree
-      const content = this.tree.read(this.filePath)?.toString() || '';
-      this.sourceFile = this.project.createSourceFile(this.filePath, content, { overwrite: true });
+      const fileContent = this.tree.read(this.filePath)?.toString() || '';
+      this.sourceFile = this.project.createSourceFile(this.filePath, fileContent, { overwrite: true });
     }
     
     this.parseConfigArray();
   }
 
-  private isSourceFile(obj: unknown): obj is SourceFile {
-    return obj && typeof obj === 'object' && obj !== null && typeof (obj as Record<string, unknown>).getProject === 'function';
+  /**
+   * Type guard to determine if the input is a TSMorph SourceFile.
+   * 
+   * @param input - The input object to check
+   * @returns True if input is a SourceFile, false otherwise
+   */
+  private isSourceFile(input: unknown): input is SourceFile {
+    return input && typeof input === 'object' && input !== null && 
+           typeof (input as Record<string, unknown>).getProject === 'function';
   }
 
   /**
-   * Parse the config array from the source file
-   * Handles export default [...] syntax
+   * Parses the main configuration array from the ESLint config file.
+   * Looks for and validates the "export default [...]" statement.
+   * 
+   * @throws {Error} When no export default is found or it's not an array literal
+   * @private
    */
   private parseConfigArray(): void {
-    // Find export default statement
+    // Find the export default statement
     const exportAssignment = this.sourceFile.getExportAssignments()[0];
     if (!exportAssignment) {
-      throw new Error('No export default found in ESLint config file');
+      throw new Error(`No export default found in ESLint config file: ${this.filePath}`);
     }
 
-    const expression = exportAssignment.getExpression();
-    if (Node.isArrayLiteralExpression(expression)) {
-      this.configArray = expression;
+    const defaultExpression = exportAssignment.getExpression();
+    if (Node.isArrayLiteralExpression(defaultExpression)) {
+      this.configArray = defaultExpression;
     } else {
-      throw new Error('Export default is not an array literal');
+      throw new Error(`Export default must be an array literal in ESLint flat config: ${this.filePath}`);
     }
   }
 
   /**
-   * Get all configuration objects from the config array
+   * Retrieves all configuration objects from the ESLint config array.
+   * Filters out spread elements and only returns parsed object literals.
+   * 
+   * @returns Array of parsed ESLint configuration objects
    */
   getConfigs(): EslintConfigObject[] {
     if (!this.configArray) {
@@ -91,160 +178,246 @@ export class EslintTsMorphUtil implements EslintConfigOperations {
     const configs: EslintConfigObject[] = [];
     
     for (const element of this.configArray.getElements()) {
-      if (Node.isObjectLiteralExpression(element)) {
-        const config = this.parseConfigObject(element);
-        if (config) {
-          configs.push(config);
-        }
+      if (!Node.isObjectLiteralExpression(element)) {
+        // Skip spread elements and other non-object expressions
+        continue;
       }
-      // Skip spread elements for now - they represent base configs
+      
+      const parsedConfig = this.parseConfigObject(element);
+      if (parsedConfig) {
+        configs.push(parsedConfig);
+      }
     }
 
     return configs;
   }
 
   /**
-   * Parse a single config object literal expression into EslintConfigObject
+   * Parses a single ObjectLiteralExpression into an EslintConfigObject.
+   * Handles all standard ESLint config properties including spread operators.
+   * 
+   * @param objectExpression - The TSMorph ObjectLiteralExpression to parse
+   * @returns Parsed config object or null if parsing fails
+   * @private
    */
-  private parseConfigObject(objectExpr: ObjectLiteralExpression): EslintConfigObject | null {
-    const config: EslintConfigObject = {};
+  private parseConfigObject(objectExpression: ObjectLiteralExpression): EslintConfigObject | null {
+    const configObject: EslintConfigObject = {};
     
-    for (const property of objectExpr.getProperties()) {
+    for (const property of objectExpression.getProperties()) {
       if (Node.isPropertyAssignment(property)) {
-        const name = property.getName();
-        const value = property.getInitializer();
+        const propertyName = property.getName();
+        const propertyValue = property.getInitializer();
         
-        if (name === 'files' || name === 'ignores') {
-          if (Node.isArrayLiteralExpression(value)) {
-            config[name] = value.getElements()
-              .filter(Node.isStringLiteral)
-              .map(el => el.getLiteralValue());
-          }
-        } else if (name === 'rules') {
-          if (Node.isObjectLiteralExpression(value)) {
-            config.rules = this.parseRulesObject(value);
-          }
-        } else if (name === 'languageOptions') {
-          if (Node.isObjectLiteralExpression(value)) {
-            config.languageOptions = this.parseObjectLiteral(value);
-          }
+        if (propertyName === 'files' || propertyName === 'ignores') {
+          configObject[propertyName] = this.parseStringArrayProperty(propertyValue);
+        } else if (propertyName === 'rules') {
+          configObject.rules = this.parseRulesProperty(propertyValue);
+        } else if (propertyName === 'languageOptions') {
+          configObject.languageOptions = this.parseObjectProperty(propertyValue);
         } else {
-          // Handle other properties
-          config[name] = this.parsePropertyValue(value);
+          // Handle other properties generically
+          configObject[propertyName] = this.parsePropertyValue(propertyValue);
         }
       } else if (Node.isSpreadAssignment(property)) {
         // Handle spread assignments in config objects
         const spreadExpression = property.getExpression();
-        const spreadText = spreadExpression.getText();
+        const spreadKey = `...${spreadExpression.getText()}`;
         
         // Store the spread with a special key for later reconstruction
-        config[`...${spreadText}`] = undefined;
+        configObject[spreadKey] = undefined;
       }
     }
 
-    return config;
+    return configObject;
   }
 
   /**
-   * Parse rules object from ObjectLiteralExpression
+   * Parses a string array property (files, ignores).
+   * 
+   * @param propertyValue - The property value to parse
+   * @returns Array of strings or undefined
+   * @private
    */
-  private parseRulesObject(rulesObj: ObjectLiteralExpression): Record<string, EslintRuleConfig> {
-    const rules: Record<string, EslintRuleConfig> = {};
+  private parseStringArrayProperty(propertyValue: Node | undefined): string[] | undefined {
+    if (Node.isArrayLiteralExpression(propertyValue)) {
+      return propertyValue.getElements()
+        .filter(Node.isStringLiteral)
+        .map(element => element.getLiteralValue());
+    }
+    return undefined;
+  }
+
+  /**
+   * Parses a rules property value.
+   * 
+   * @param propertyValue - The rules property value to parse
+   * @returns Parsed rules object or undefined
+   * @private
+   */
+  private parseRulesProperty(propertyValue: Node | undefined): Record<string, EslintRuleConfig> | undefined {
+    if (Node.isObjectLiteralExpression(propertyValue)) {
+      return this.parseRulesObject(propertyValue);
+    }
+    return undefined;
+  }
+
+  /**
+   * Parses a generic object property.
+   * 
+   * @param propertyValue - The object property value to parse
+   * @returns Parsed object or undefined
+   * @private
+   */
+  private parseObjectProperty(propertyValue: Node | undefined): Record<string, unknown> | undefined {
+    if (Node.isObjectLiteralExpression(propertyValue)) {
+      return this.parseObjectLiteral(propertyValue);
+    }
+    return undefined;
+  }
+
+  /**
+   * Parses an ESLint rules object from ObjectLiteralExpression.
+   * Handles both regular rule properties and spread assignments.
+   * 
+   * @param rulesObjectExpression - The rules object to parse
+   * @returns Parsed rules configuration
+   * @private
+   */
+  private parseRulesObject(rulesObjectExpression: ObjectLiteralExpression): Record<string, EslintRuleConfig> {
+    const rulesConfig: Record<string, EslintRuleConfig> = {};
     
-    for (const property of rulesObj.getProperties()) {
+    for (const property of rulesObjectExpression.getProperties()) {
       if (Node.isPropertyAssignment(property)) {
         const ruleName = property.getName();
         // Remove quotes from property name if present
-        const cleanName = ruleName.replace(/^['"](.*)['"]$/, '$1');
-        const value = property.getInitializer();
-        rules[cleanName] = this.parsePropertyValue(value) as EslintRuleConfig;
+        const cleanRuleName = ruleName.replace(/^(['"])(.*)\1$/, '$2');
+        const ruleValue = property.getInitializer();
+        rulesConfig[cleanRuleName] = this.parsePropertyValue(ruleValue) as EslintRuleConfig;
       } else if (Node.isSpreadAssignment(property)) {
         // Handle spread assignments in rules
         const spreadExpression = property.getExpression();
-        const spreadText = spreadExpression.getText();
+        const spreadKey = `...${spreadExpression.getText()}`;
         
         // Store the spread with a special key for later reconstruction
-        rules[`...${spreadText}`] = null as unknown as EslintRuleConfig;
+        rulesConfig[spreadKey] = null as unknown as EslintRuleConfig;
       }
     }
 
-    return rules;
+    return rulesConfig;
   }
 
   /**
-   * Parse any object literal into a plain object
+   * Parses any ObjectLiteralExpression into a plain JavaScript object.
+   * Handles property assignments and spread operators.
+   * 
+   * @param objectExpression - The object literal to parse
+   * @returns Parsed plain object
+   * @private
    */
-  private parseObjectLiteral(obj: ObjectLiteralExpression): Record<string, unknown> {
-    const result: Record<string, unknown> = {};
+  private parseObjectLiteral(objectExpression: ObjectLiteralExpression): Record<string, unknown> {
+    const resultObject: Record<string, unknown> = {};
     
-    for (const property of obj.getProperties()) {
+    for (const property of objectExpression.getProperties()) {
       if (Node.isPropertyAssignment(property)) {
-        const name = property.getName();
-        // Remove quotes from property name if present
-        const cleanName = name.replace(/^['"](.*)['"]$/, '$1');
-        const value = property.getInitializer();
-        result[cleanName] = this.parsePropertyValue(value);
+        const propertyName = property.getName();
+        // Remove quotes from property name if present  
+        const cleanPropertyName = propertyName.replace(/^(['"])(.*)\1$/, '$2');
+        const propertyValue = property.getInitializer();
+        resultObject[cleanPropertyName] = this.parsePropertyValue(propertyValue);
       } else if (Node.isSpreadAssignment(property)) {
         // Handle spread assignments in config objects
         const spreadExpression = property.getExpression();
-        const spreadText = spreadExpression.getText();
+        const spreadKey = `...${spreadExpression.getText()}`;
         
         // Store the spread with a special key for later reconstruction
-        result[`...${spreadText}`] = undefined;
+        resultObject[spreadKey] = undefined;
       }
     }
 
-    return result;
+    return resultObject;
   }
 
   /**
-   * Parse property value to appropriate JavaScript type
+   * Parses a TSMorph Node into its corresponding JavaScript value.
+   * Handles all common ESLint configuration value types including primitives, 
+   * arrays, objects, and dynamic imports.
+   * 
+   * @param valueNode - The TSMorph node to parse
+   * @returns The parsed JavaScript value
+   * @private
    */
-  private parsePropertyValue(value: Node | undefined): unknown {
-    if (!value) return undefined;
+  private parsePropertyValue(valueNode: Node | undefined): unknown {
+    if (!valueNode) {
+      return undefined;
+    }
 
-    if (Node.isStringLiteral(value)) {
-      return value.getLiteralValue();
-    } else if (Node.isNumericLiteral(value)) {
-      return value.getLiteralValue();
-    } else if (value.getKind() === SyntaxKind.TrueKeyword) {
-      return true;
-    } else if (value.getKind() === SyntaxKind.FalseKeyword) {
-      return false;
-    } else if (value.getKind() === SyntaxKind.NullKeyword) {
-      return null;
-    } else if (value.getKind() === SyntaxKind.UndefinedKeyword) {
+    // Handle primitive literals
+    if (Node.isStringLiteral(valueNode)) {
+      return valueNode.getLiteralValue();
+    }
+    
+    if (Node.isNumericLiteral(valueNode)) {
+      return valueNode.getLiteralValue();
+    }
+    
+    // Handle keyword literals
+    const nodeKind = valueNode.getKind();
+    if (nodeKind === SyntaxKind.TrueKeyword) return true;
+    if (nodeKind === SyntaxKind.FalseKeyword) return false;
+    if (nodeKind === SyntaxKind.NullKeyword) return null;
+    if (nodeKind === SyntaxKind.UndefinedKeyword) return undefined;
+    
+    // Handle undefined identifier
+    if (Node.isIdentifier(valueNode) && valueNode.getText() === 'undefined') {
       return undefined;
-    } else if (Node.isIdentifier(value) && value.getText() === 'undefined') {
-      return undefined;
-    } else if (Node.isArrayLiteralExpression(value)) {
-      return value.getElements().map(el => this.parsePropertyValue(el));
-    } else if (Node.isObjectLiteralExpression(value)) {
-      return this.parseObjectLiteral(value);
-    } else if (Node.isAwaitExpression(value) && Node.isCallExpression(value.getExpression())) {
-      // Handle await import(...) syntax
-      const callExpr = value.getExpression();
-      if (Node.isCallExpression(callExpr)) {
-        const expr = callExpr.getExpression();
-        // Check for dynamic import expression
-        if (Node.isImportExpression(expr)) {
-          const args = callExpr.getArguments();
-          if (args.length > 0 && Node.isStringLiteral(args[0])) {
-            return { __dynamicImport: args[0].getLiteralValue() };
-          }
-        }
-        // Check for traditional import() call
-        else if (Node.isIdentifier(expr) && expr.getText() === 'import') {
-          const args = callExpr.getArguments();
-          if (args.length > 0 && Node.isStringLiteral(args[0])) {
-            return { __dynamicImport: args[0].getLiteralValue() };
-          }
-        }
+    }
+    
+    // Handle complex types
+    if (Node.isArrayLiteralExpression(valueNode)) {
+      return valueNode.getElements().map(element => this.parsePropertyValue(element));
+    }
+    
+    if (Node.isObjectLiteralExpression(valueNode)) {
+      return this.parseObjectLiteral(valueNode);
+    }
+    
+    // Handle dynamic imports (await import(...))
+    if (Node.isAwaitExpression(valueNode)) {
+      const awaitedExpression = valueNode.getExpression();
+      if (Node.isCallExpression(awaitedExpression)) {
+        const dynamicImport = this.parseDynamicImport(awaitedExpression);
+        // If we can't parse the dynamic import, fall back to text representation
+        return dynamicImport || valueNode.getText();
       }
     }
 
-    // For complex expressions, return the text representation
-    return value.getText();
+    // Fallback to text representation for complex expressions
+    return valueNode.getText();
+  }
+
+  /**
+   * Parses dynamic import expressions like import('module-name').
+   * 
+   * @param callExpression - The call expression to parse
+   * @returns Special object representing dynamic import or undefined
+   * @private
+   */
+  private parseDynamicImport(callExpression: CallExpression): { __dynamicImport: string } | undefined {
+    const expression = callExpression.getExpression();
+    const callArguments = callExpression.getArguments();
+    
+    // Check for import expression or import identifier
+    const isImportExpression = Node.isImportExpression(expression) || 
+                              (Node.isIdentifier(expression) && expression.getText() === 'import');
+    
+    if (isImportExpression && callArguments.length > 0) {
+      const firstArg = callArguments[0];
+      if (Node.isStringLiteral(firstArg)) {
+        return { __dynamicImport: firstArg.getLiteralValue() };
+      }
+    }
+    
+    return undefined;
   }
 
   /**
@@ -396,13 +569,12 @@ ${properties.map(p => `  ${p.name}: ${p.initializer}`).join(',\n')}
       }
       
       const properties = [];
-      for (const [k, v] of Object.entries(obj)) {
+      for (const [key, value] of Object.entries(obj)) {
         // Handle spread operators - keys starting with '...'
-        if (k.startsWith('...')) {
-          const spreadExpression = k.substring(3); // Remove the '...' prefix
-          properties.push(`...${spreadExpression}`);
+        if (key.startsWith('...')) {
+          properties.push(key); // Key already includes '...' prefix
         } else {
-          properties.push(`'${k}': ${this.valueToString(v)}`);
+          properties.push(`'${key}': ${this.valueToString(value)}`);
         }
       }
       
@@ -609,106 +781,6 @@ ${properties.map(p => `  ${p.name}: ${p.initializer}`).join(',\n')}
   getRule(filePattern: string[], ruleName: string): EslintRuleConfig | undefined {
     const rules = this.getRulesForPattern(filePattern);
     return rules?.[ruleName];
-  }
-
-  // ============================================================================
-  // COMMON ESLint CONFIGURATION PRESETS
-  // ============================================================================
-
-  /**
-   * Add common TypeScript rules for a project
-   */
-  addTypeScriptRules(filePattern: string[] = ['**/*.ts', '**/*.tsx']): void {
-    this.ensureRule(filePattern, '@typescript-eslint/no-unused-vars', 'error');
-    this.ensureRule(filePattern, '@typescript-eslint/explicit-function-return-type', 'off');
-    this.ensureRule(filePattern, '@typescript-eslint/explicit-module-boundary-types', 'off');
-    this.ensureRule(filePattern, '@typescript-eslint/no-explicit-any', 'warn');
-  }
-
-  /**
-   * Add common React rules for a project
-   */
-  addReactRules(filePattern: string[] = ['**/*.tsx', '**/*.jsx']): void {
-    this.ensureRule(filePattern, 'react/prop-types', 'off');
-    this.ensureRule(filePattern, 'react/react-in-jsx-scope', 'off');
-    this.ensureRule(filePattern, 'react-hooks/rules-of-hooks', 'error');
-    this.ensureRule(filePattern, 'react-hooks/exhaustive-deps', 'warn');
-  }
-
-  /**
-   * Add Angular-specific rules
-   */
-  addAngularRules(filePattern: string[] = ['**/*.ts'], componentPrefix = 'app'): void {
-    this.ensureRule(filePattern, '@angular-eslint/component-selector', [
-      'error',
-      {
-        type: 'element',
-        prefix: componentPrefix,
-        style: 'kebab-case'
-      }
-    ]);
-    this.ensureRule(filePattern, '@angular-eslint/directive-selector', [
-      'error',
-      {
-        type: 'attribute',
-        prefix: componentPrefix,
-        style: 'camelCase'
-      }
-    ]);
-  }
-
-  /**
-   * Add Playwright test rules for E2E testing
-   */
-  addPlaywrightRules(filePattern: string[] = ['**/*.e2e.ts', 'e2e/**/*.ts']): void {
-    this.ensureRule(filePattern, 'playwright/expect-expect', 'error');
-    this.ensureRule(filePattern, 'playwright/no-wait-for-timeout', 'warn');
-    this.ensureRule(filePattern, 'playwright/no-force-option', 'error');
-    this.ensureRule(filePattern, 'playwright/prefer-web-first-assertions', 'error');
-  }
-
-  /**
-   * Add Jest test rules
-   */
-  addJestRules(filePattern: string[] = ['**/*.spec.ts', '**/*.test.ts']): void {
-    this.ensureRule(filePattern, 'jest/expect-expect', 'error');
-    this.ensureRule(filePattern, 'jest/no-disabled-tests', 'warn');
-    this.ensureRule(filePattern, 'jest/no-focused-tests', 'error');
-    this.ensureRule(filePattern, 'jest/valid-expect', 'error');
-  }
-
-  /**
-   * Add Nx-specific workspace rules
-   */
-  addNxWorkspaceRules(filePattern: string[] = ['**/*.ts', '**/*.js']): void {
-    this.ensureRule(filePattern, '@nx/enforce-module-boundaries', [
-      'error',
-      {
-        enforceBuildableLibDependency: true,
-        allow: ['^.*/eslint(\\.base)?\\.config\\.[cm]?[jt]s$'],
-        depConstraints: [
-          {
-            sourceTag: '*',
-            onlyDependOnLibsWithTags: ['*'],
-          },
-        ],
-      }
-    ]);
-  }
-
-  /**
-   * Add dependency checks for a specific project
-   */
-  addNxDependencyChecks(filePattern: string[] = ['**/*.ts', '**/*.js'], ignoredFiles: string[] = []): void {
-    const defaultIgnoredFiles = ['{projectRoot}/eslint.config.{js,cjs,mjs,ts,cts,mts}'];
-    const allIgnoredFiles = [...defaultIgnoredFiles, ...ignoredFiles];
-
-    this.ensureRule(filePattern, '@nx/dependency-checks', [
-      'error',
-      {
-        ignoredFiles: allIgnoredFiles
-      }
-    ]);
   }
 
   // ============================================================================

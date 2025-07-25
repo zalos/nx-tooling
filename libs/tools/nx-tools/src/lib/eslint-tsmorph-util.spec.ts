@@ -63,7 +63,7 @@ export default {
 };
       `);
 
-      expect(() => new EslintTsMorphUtil(sourceFile, 'eslint.config.mjs')).toThrow('Export default is not an array literal');
+      expect(() => new EslintTsMorphUtil(sourceFile, 'eslint.config.mjs')).toThrow('Export default must be an array literal in ESLint flat config');
     });
   });
 
@@ -1337,25 +1337,6 @@ export default [
       expect(util.getRule(['**/*.ts'], 'non-existent')).toBeUndefined();
     });
 
-    it('should add TypeScript preset rules', () => {
-      const content = 'export default []';
-      const project = new Project({ useInMemoryFileSystem: true });
-      const sourceFile = project.createSourceFile('eslint.config.js', content);
-      const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
-
-      util.addTypeScriptRules();
-
-      const result = util.getConfigs();
-      expect(result).toHaveLength(1);
-      expect(result[0].files).toEqual(['**/*.ts', '**/*.tsx']);
-      expect(result[0].rules).toEqual({
-        '@typescript-eslint/no-unused-vars': 'error',
-        '@typescript-eslint/explicit-function-return-type': 'off',
-        '@typescript-eslint/explicit-module-boundary-types': 'off',
-        '@typescript-eslint/no-explicit-any': 'warn'
-      });
-    });
-
     it('should remove deprecated rules', () => {
       const content = `export default [
         {
@@ -1596,6 +1577,371 @@ export default [
         expect(result).toContain('...baseRules');
         expect(result).toContain("'no-console': 'error'");
         expect(result).toContain("'no-debugger': 'warn'");
+      });
+    });
+  });
+
+  describe('Helper Methods Coverage', () => {
+    describe('ensureRule', () => {
+      it('should add rule if it does not exist', () => {
+        const content = 'export default []';
+        const project = new Project({ useInMemoryFileSystem: true });
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        util.ensureRule(['**/*.ts'], 'no-console', 'warn');
+
+        const result = util.getConfigs();
+        expect(result).toHaveLength(1);
+        expect(result[0].rules).toEqual({ 'no-console': 'warn' });
+      });
+
+      it('should update rule if it already exists', () => {
+        const content = `export default [{
+          files: ['**/*.ts'],
+          rules: { 'no-console': 'error' }
+        }]`;
+        const project = new Project({ useInMemoryFileSystem: true });
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        util.ensureRule(['**/*.ts'], 'no-console', 'warn');
+
+        const result = util.getConfigs();
+        expect(result[0].rules).toEqual({ 'no-console': 'warn' });
+      });
+    });
+
+    describe('removeRuleIfExists', () => {
+      it('should remove rule if it exists', () => {
+        const content = `export default [{
+          files: ['**/*.ts'],
+          rules: { 'no-console': 'error', 'no-debugger': 'warn' }
+        }]`;
+        const project = new Project({ useInMemoryFileSystem: true });
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        util.removeRuleIfExists(['**/*.ts'], 'no-console');
+
+        const result = util.getConfigs();
+        expect(result[0].rules).toEqual({ 'no-debugger': 'warn' });
+      });
+
+      it('should do nothing if rule does not exist', () => {
+        const content = `export default [{
+          files: ['**/*.ts'],
+          rules: { 'no-debugger': 'warn' }
+        }]`;
+        const project = new Project({ useInMemoryFileSystem: true });
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        util.removeRuleIfExists(['**/*.ts'], 'no-console');
+
+        const result = util.getConfigs();
+        expect(result[0].rules).toEqual({ 'no-debugger': 'warn' });
+      });
+    });
+
+    describe('getRulesForPattern', () => {
+      it('should return rules for existing pattern', () => {
+        const content = `export default [{
+          files: ['**/*.ts'],
+          rules: { 'no-console': 'error', 'no-debugger': 'warn' }
+        }]`;
+        const project = new Project({ useInMemoryFileSystem: true });
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        const rules = util.getRulesForPattern(['**/*.ts']);
+
+        expect(rules).toEqual({ 'no-console': 'error', 'no-debugger': 'warn' });
+      });
+
+      it('should return undefined for non-existent pattern', () => {
+        const content = 'export default []';
+        const project = new Project({ useInMemoryFileSystem: true });
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        const rules = util.getRulesForPattern(['**/*.ts']);
+
+        expect(rules).toBeUndefined();
+      });
+    });
+
+    describe('setLanguageOptions', () => {
+      it('should create new config with language options when pattern does not exist', () => {
+        const content = 'export default []';
+        const project = new Project({ useInMemoryFileSystem: true });
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        util.setLanguageOptions(['**/*.ts'], '@typescript-eslint/parser', { ecmaVersion: 2020 });
+
+        const result = util.getConfigs();
+        expect(result).toHaveLength(1);
+        expect(result[0].files).toEqual(['**/*.ts']);
+        expect(result[0].languageOptions).toEqual({
+          parser: '@typescript-eslint/parser',
+          parserOptions: { ecmaVersion: 2020 }
+        });
+      });
+
+      it('should add languageOptions to existing config without languageOptions', () => {
+        const content = `export default [{
+          files: ['**/*.ts'],
+          rules: { 'no-console': 'error' }
+        }]`;
+        const project = new Project({ useInMemoryFileSystem: true });
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        util.setLanguageOptions(['**/*.ts'], '@typescript-eslint/parser');
+
+        const updatedContent = util.getContent();
+        expect(updatedContent).toContain('languageOptions');
+        expect(updatedContent).toContain('@typescript-eslint/parser');
+      });
+
+      it('should update existing languageOptions', () => {
+        const content = `export default [{
+          files: ['**/*.ts'],
+          languageOptions: {
+            parser: 'old-parser',
+            parserOptions: { ecmaVersion: 2018 }
+          },
+          rules: { 'no-console': 'error' }
+        }]`;
+        const project = new Project({ useInMemoryFileSystem: true });
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        util.setLanguageOptions(['**/*.ts'], '@typescript-eslint/parser', { ecmaVersion: 2022 });
+
+        const updatedContent = util.getContent();
+        expect(updatedContent).toContain('@typescript-eslint/parser');
+        expect(updatedContent).toContain('2022');
+      });
+
+      it('should handle object parser option', () => {
+        const content = 'export default []';
+        const project = new Project({ useInMemoryFileSystem: true });
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        const parserConfig = { name: '@typescript-eslint/parser', version: '6.0.0' };
+        util.setLanguageOptions(['**/*.ts'], parserConfig);
+
+        const result = util.getConfigs();
+        expect(result[0].languageOptions?.parser).toEqual(parserConfig);
+      });
+    });
+
+    describe('updateRenamedRules', () => {
+      it('should rename existing rules to new names', () => {
+        const content = `export default [{
+          files: ['**/*.ts'],
+          rules: {
+            '@typescript-eslint/ban-ts-ignore': 'error',
+            '@typescript-eslint/camelcase': 'warn',
+            'no-spaced-func': 'error'
+          }
+        }]`;
+        const project = new Project({ useInMemoryFileSystem: true });
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        util.updateRenamedRules(['**/*.ts']);
+
+        const result = util.getConfigs();
+        expect(result[0].rules).toEqual({
+          '@typescript-eslint/ban-ts-comment': 'error',
+          '@typescript-eslint/naming-convention': 'warn',
+          'func-call-spacing': 'error'
+        });
+      });
+
+      it('should do nothing if no renamed rules exist', () => {
+        const content = `export default [{
+          files: ['**/*.ts'],
+          rules: { 'no-console': 'error' }
+        }]`;
+        const project = new Project({ useInMemoryFileSystem: true });
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        util.updateRenamedRules(['**/*.ts']);
+
+        const result = util.getConfigs();
+        expect(result[0].rules).toEqual({ 'no-console': 'error' });
+      });
+    });
+
+    describe('clearAllRules', () => {
+      it('should remove all rules from config', () => {
+        const content = `export default [{
+          files: ['**/*.ts'],
+          rules: {
+            'no-console': 'error',
+            'no-debugger': 'warn',
+            '@typescript-eslint/no-unused-vars': 'error'
+          }
+        }]`;
+        const project = new Project({ useInMemoryFileSystem: true });
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        util.clearAllRules(['**/*.ts']);
+
+        const result = util.getConfigs();
+        expect(result[0].files).toEqual(['**/*.ts']);
+        expect(result[0].rules).toBeUndefined();
+      });
+
+      it('should do nothing if config does not exist', () => {
+        const content = 'export default []';
+        const project = new Project({ useInMemoryFileSystem: true });
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        util.clearAllRules(['**/*.ts']);
+
+        const result = util.getConfigs();
+        expect(result).toHaveLength(0);
+      });
+    });
+
+    describe('hasConfigForPattern', () => {
+      it('should return true for existing pattern', () => {
+        const content = `export default [{
+          files: ['**/*.ts'],
+          rules: { 'no-console': 'error' }
+        }]`;
+        const project = new Project({ useInMemoryFileSystem: true });
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        const hasConfig = util.hasConfigForPattern(['**/*.ts']);
+
+        expect(hasConfig).toBe(true);
+      });
+
+      it('should return false for non-existent pattern', () => {
+        const content = 'export default []';
+        const project = new Project({ useInMemoryFileSystem: true });
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        const hasConfig = util.hasConfigForPattern(['**/*.ts']);
+
+        expect(hasConfig).toBe(false);
+      });
+    });
+
+    describe('getAllConfiguredPatterns', () => {
+      it('should return all file patterns that have configurations', () => {
+        const content = `export default [
+          { files: ['**/*.ts'], rules: { 'no-console': 'error' } },
+          { files: ['**/*.js'], rules: { 'no-debugger': 'warn' } },
+          { ignores: ['node_modules'] }
+        ]`;
+        const project = new Project({ useInMemoryFileSystem: true });
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        const patterns = util.getAllConfiguredPatterns();
+
+        expect(patterns).toEqual([
+          ['**/*.ts'],
+          ['**/*.js']
+        ]);
+      });
+
+      it('should return empty array when no configurations exist', () => {
+        const content = 'export default []';
+        const project = new Project({ useInMemoryFileSystem: true });
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        const patterns = util.getAllConfiguredPatterns();
+
+        expect(patterns).toEqual([]);
+      });
+    });
+
+    describe('mergeRulesFromPattern', () => {
+      it('should merge rules from source pattern to target pattern', () => {
+        const content = `export default [
+          { files: ['**/*.ts'], rules: { 'no-console': 'error', 'no-debugger': 'warn' } },
+          { files: ['**/*.spec.ts'], rules: { 'jest/expect-expect': 'error' } }
+        ]`;
+        const project = new Project({ useInMemoryFileSystem: true });
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        util.mergeRulesFromPattern(['**/*.ts'], ['**/*.spec.ts']);
+
+        const result = util.getConfigs();
+        const specConfig = result.find(config => config.files?.[0] === '**/*.spec.ts');
+        expect(specConfig?.rules).toEqual({
+          'jest/expect-expect': 'error',
+          'no-console': 'error',
+          'no-debugger': 'warn'
+        });
+      });
+
+      it('should do nothing if source pattern does not exist', () => {
+        const content = `export default [
+          { files: ['**/*.spec.ts'], rules: { 'jest/expect-expect': 'error' } }
+        ]`;
+        const project = new Project({ useInMemoryFileSystem: true });
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        util.mergeRulesFromPattern(['**/*.ts'], ['**/*.spec.ts']);
+
+        const result = util.getConfigs();
+        const specConfig = result.find(config => config.files?.[0] === '**/*.spec.ts');
+        expect(specConfig?.rules).toEqual({
+          'jest/expect-expect': 'error'
+        });
+      });
+    });
+
+    describe('copyConfigToPattern', () => {
+      it('should copy entire configuration to new pattern', () => {
+        const content = `export default [{
+          files: ['**/*.ts'],
+          languageOptions: { parser: '@typescript-eslint/parser' },
+          rules: { 'no-console': 'error', 'no-debugger': 'warn' }
+        }]`;
+        const project = new Project({ useInMemoryFileSystem: true });
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        util.copyConfigToPattern(['**/*.ts'], ['**/*.tsx']);
+
+        const result = util.getConfigs();
+        const tsxConfig = result.find(config => config.files?.[0] === '**/*.tsx');
+        expect(tsxConfig).toEqual({
+          files: ['**/*.tsx'],
+          languageOptions: { parser: '@typescript-eslint/parser' },
+          rules: { 'no-console': 'error', 'no-debugger': 'warn' }
+        });
+      });
+
+      it('should do nothing if source pattern does not exist', () => {
+        const content = 'export default []';
+        const project = new Project({ useInMemoryFileSystem: true });
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        util.copyConfigToPattern(['**/*.ts'], ['**/*.tsx']);
+
+        const result = util.getConfigs();
+        expect(result).toHaveLength(0);
       });
     });
   });
