@@ -1,0 +1,58 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`EslintTsMorphUtil E2E scenarios should add Playwright config for e2e files: playwright-e2e-config 1`] = `
+"
+import baseConfig from '../../../eslint.config.mjs';
+
+export default [
+  ...baseConfig,
+  {
+    files: ['**/*.json'],
+    rules: {
+      '@nx/dependency-checks': [
+        'error',
+        {
+          ignoredFiles: ['{projectRoot}/eslint.config.{js,cjs,mjs,ts,cts,mts}'],
+        },
+      ],
+    },
+    languageOptions: {
+      parser: await import('jsonc-eslint-parser'),
+    },
+  },
+    {
+      files: ['e2e/**/*.ts'],
+      rules: { 'playwright/expect-expect': 'error', 'playwright/no-wait-for-timeout': 'warn' }
+    }
+];
+      "
+`;
+
+exports[`EslintTsMorphUtil E2E scenarios should handle complex Nx dependency checks configuration: nx-dependency-constraints 1`] = `
+"
+export default [
+  {
+    files: ['**/*.ts'],
+    rules: {
+      '@nx/enforce-module-boundaries': ['error', { 'enforceBuildableLibDependency': true, 'allow': ['^.*/eslint(\\.base)?\\.config\\.[cm]?[jt]s$'], 'depConstraints': [{ 'sourceTag': 'type:app', 'onlyDependOnLibsWithTags': ['type:lib', 'type:util'] }, { 'sourceTag': 'type:lib', 'onlyDependOnLibsWithTags': ['type:lib', 'type:util'] }] }],
+    }
+  }
+];
+      "
+`;
+
+exports[`EslintTsMorphUtil E2E scenarios should modify Angular component prefix rules: angular-prefix-update 1`] = `
+"
+import baseConfig from '../../../eslint.config.mjs';
+
+export default [
+  ...baseConfig,
+  {
+    files: ['**/*.ts'],
+    rules: {
+      '@angular-eslint/component-selector': ['error', { 'type': 'element', 'prefix': 'my-company', 'style': 'kebab-case' }]
+    }
+  }
+];
+      "
+`;

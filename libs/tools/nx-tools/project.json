@@ -1,0 +1,20 @@
+{
+  "name": "nx-tools",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/tools/nx-tools/src",
+  "projectType": "library",
+  "tags": [],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/tools/nx-tools",
+        "tsConfig": "libs/tools/nx-tools/tsconfig.lib.json",
+        "packageJson": "libs/tools/nx-tools/package.json",
+        "main": "libs/tools/nx-tools/src/index.ts",
+        "assets": ["libs/tools/nx-tools/*.md"]
+      }
+    }
+  }
+}
