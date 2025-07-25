@@ -50,6 +50,23 @@ eslintUtil.addOrUpdateConfig('**/*.ts', {
 eslintUtil.save();
 ```
 
+### Common Use Case: Playwright E2E Configuration
+
+```typescript
+// Add Playwright configuration with spread operators
+eslintUtil.addOrUpdateConfig('tests/**', {
+  '...playwright.configs[\'flat/recommended\']': true,
+  files: ['tests/**'],
+  rules: {
+    '...playwright.configs[\'flat/recommended\'].rules': true,
+    // Customize Playwright rules
+    'playwright/expect-expect': 'error'
+  }
+});
+
+eslintUtil.save();
+```
+
 ### Import Management
 
 ```typescript
@@ -399,7 +416,21 @@ eslintUtil.addOrUpdateConfig('**/*.e2e-spec.ts', {
 #### Using Spread Operator for Configuration Extension
 
 ```typescript
-// Playwright configuration using spread operator (recommended approach)
+// Simple Playwright configuration with modern flat config syntax
+eslintUtil.addOrUpdateConfig('tests/**', {
+  '...playwright.configs[\'flat/recommended\']': true,
+  files: ['tests/**'],
+  rules: {
+    '...playwright.configs[\'flat/recommended\'].rules': true,
+    // Customize Playwright rules
+    'playwright/expect-expect': 'error',
+    'playwright/no-conditional-in-test': 'warn'
+  }
+});
+```
+
+```typescript
+// Advanced Playwright configuration using spread operator (recommended approach)
 eslintUtil.addOrUpdateConfig('**/*.e2e-spec.ts', {
   // Use spread operator to extend existing configurations
   '...playwright.configs.recommended': true,
@@ -445,15 +476,13 @@ export default [
     }
   },
   {
-    ...playwright.configs.recommended,
-    files: ['**/*.e2e-spec.ts', 'e2e/**/*.ts'],
-    languageOptions: {
-      parser: '@typescript-eslint/parser'
-    },
+    ...playwright.configs['flat/recommended'],
+    files: ['tests/**'],
     rules: {
+      ...playwright.configs['flat/recommended'].rules,
+      // Customize Playwright rules
       'playwright/expect-expect': 'error',
-      'playwright/no-conditional-in-test': 'warn',
-      'playwright/no-skipped-test': 'error'
+      'playwright/no-conditional-in-test': 'warn'
     }
   }
 ];
@@ -546,6 +575,110 @@ eslintUtil.addOrUpdateConfig('**/*.ts', {
     '@typescript-eslint': require('@typescript-eslint/eslint-plugin')
   }
 });
+
+### Spread Operator Support
+
+The `EslintTsMorphUtil` supports spread operators for both configuration objects and rules sections, allowing you to extend base configurations cleanly.
+
+#### Adding Spread Operators to Rules
+
+```typescript
+// Add spread operator to rules section
+eslintUtil.addSpreadToRules(['**/*.ts'], 'baseTypeScriptRules');
+
+// Remove spread operator from rules section  
+eslintUtil.removeSpreadFromRules(['**/*.ts'], 'baseTypeScriptRules');
+```
+
+**Before:**
+```javascript
+export default [
+  {
+    files: ['**/*.ts'],
+    rules: {
+      'no-console': 'error'
+    }
+  }
+];
+```
+
+**After adding spread to rules:**
+```javascript
+export default [
+  {
+    files: ['**/*.ts'],
+    rules: {
+      ...baseTypeScriptRules,
+      'no-console': 'error'
+    }
+  }
+];
+```
+
+#### Adding Spread Operators to Config Objects
+
+```typescript
+// Add spread operator to config object level
+eslintUtil.addSpreadToConfig(['**/*.ts'], 'baseConfig');
+
+// Remove spread operator from config object level
+eslintUtil.removeSpreadFromConfig(['**/*.ts'], 'baseConfig');
+```
+
+**Before:**
+```javascript
+export default [
+  {
+    files: ['**/*.ts'],
+    rules: {
+      'no-console': 'error'
+    }
+  }
+];
+```
+
+**After adding spread to config:**
+```javascript
+export default [
+  {
+    ...baseConfig,
+    files: ['**/*.ts'],
+    rules: {
+      'no-console': 'error'
+    }
+  }
+];
+```
+
+#### Automatic Spread Operator Parsing
+
+The utility automatically parses and preserves existing spread operators when reading configurations:
+
+```typescript
+// Original config with spread operators
+const configWithSpreads = `
+export default [
+  {
+    ...baseConfig,
+    files: ['**/*.ts'],
+    rules: {
+      ...commonRules,
+      'no-console': 'error',
+      ...projectSpecificRules
+    }
+  }
+];
+`;
+
+const util = new EslintTsMorphUtil(tree, 'eslint.config.mjs');
+const configs = util.getConfigs();
+
+// Spread operators are preserved in the parsed configuration
+console.log(configs[0]['...baseConfig']); // undefined (placeholder)
+console.log(configs[0].rules['...commonRules']); // null (placeholder)
+console.log(configs[0].rules['...projectSpecificRules']); // null (placeholder)
+console.log(configs[0].rules['no-console']); // 'error'
+```
 
 // Modern flat config with spread operator for extending configurations
 eslintUtil.addOrUpdateConfig('**/*.ts', {
@@ -1073,6 +1206,10 @@ export default async function e2eGenerator(tree: Tree, options: E2EGeneratorOpti
 - `updateRule(files: string | string[], ruleName: string, ruleValue: any)`: Update rule
 - `hasRule(files: string | string[], ruleName: string)`: Check if rule exists
 - `getRule(files: string | string[], ruleName: string)`: Get rule configuration
+- `addSpreadToRules(files: string[], spreadExpression: string)`: Add spread operator to rules section
+- `removeSpreadFromRules(files: string[], spreadExpression: string)`: Remove spread operator from rules section
+- `addSpreadToConfig(files: string[], spreadExpression: string)`: Add spread operator to config object
+- `removeSpreadFromConfig(files: string[], spreadExpression: string)`: Remove spread operator from config object
 - `save()`: Save changes to file system
 - `getContent()`: Get updated file content
 

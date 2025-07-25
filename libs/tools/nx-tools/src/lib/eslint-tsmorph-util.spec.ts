@@ -1381,4 +1381,222 @@ export default [
       });
     });
   });
+
+  describe('spread operator support', () => {
+    describe('addSpreadToRules', () => {
+      it('should add spread operator to rules', () => {
+        const content = `export default [
+          {
+            files: ['**/*.ts'],
+            rules: {
+              'no-console': 'error'
+            }
+          }
+        ]`;
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        util.addSpreadToRules(['**/*.ts'], 'baseRules');
+
+        const result = sourceFile.getText();
+        expect(result).toContain('...baseRules');
+        expect(result).toContain("'no-console': 'error'");
+      });
+
+      it('should throw error if config not found', () => {
+        const content = `export default []`;
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        expect(() => util.addSpreadToRules(['**/*.ts'], 'baseRules'))
+          .toThrow('No config found for files: **/*.ts');
+      });
+
+      it('should throw error if rules property is not an object', () => {
+        const content = `export default [
+          {
+            files: ['**/*.ts'],
+            rules: 'invalid'
+          }
+        ]`;
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        expect(() => util.addSpreadToRules(['**/*.ts'], 'baseRules'))
+          .toThrow('Rules property must be an object literal');
+      });
+    });
+
+    describe('removeSpreadFromRules', () => {
+      it('should remove spread operator from rules', () => {
+        const content = `export default [
+          {
+            files: ['**/*.ts'],
+            rules: {
+              ...baseRules,
+              'no-console': 'error'
+            }
+          }
+        ]`;
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        util.removeSpreadFromRules(['**/*.ts'], 'baseRules');
+
+        const result = sourceFile.getText();
+        expect(result).not.toContain('...baseRules');
+        expect(result).toContain("'no-console': 'error'");
+      });
+
+      it('should handle non-existent spread operator gracefully', () => {
+        const content = `export default [
+          {
+            files: ['**/*.ts'],
+            rules: {
+              'no-console': 'error'
+            }
+          }
+        ]`;
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        // Should not throw error even if spread doesn't exist
+        expect(() => util.removeSpreadFromRules(['**/*.ts'], 'baseRules')).not.toThrow();
+      });
+    });
+
+    describe('addSpreadToConfig', () => {
+      it('should add spread operator to config object', () => {
+        const content = `export default [
+          {
+            files: ['**/*.ts'],
+            rules: {
+              'no-console': 'error'
+            }
+          }
+        ]`;
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        util.addSpreadToConfig(['**/*.ts'], 'baseConfig');
+
+        const result = sourceFile.getText();
+        expect(result).toContain('...baseConfig');
+        expect(result).toContain("files: ['**/*.ts']");
+      });
+
+      it('should throw error if config not found', () => {
+        const content = `export default []`;
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        expect(() => util.addSpreadToConfig(['**/*.ts'], 'baseConfig'))
+          .toThrow('No config found for files: **/*.ts');
+      });
+    });
+
+    describe('removeSpreadFromConfig', () => {
+      it('should remove spread operator from config object', () => {
+        const content = `export default [
+          {
+            ...baseConfig,
+            files: ['**/*.ts'],
+            rules: {
+              'no-console': 'error'
+            }
+          }
+        ]`;
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        util.removeSpreadFromConfig(['**/*.ts'], 'baseConfig');
+
+        const result = sourceFile.getText();
+        expect(result).not.toContain('...baseConfig');
+        expect(result).toContain("files: ['**/*.ts']");
+      });
+
+      it('should handle non-existent spread operator gracefully', () => {
+        const content = `export default [
+          {
+            files: ['**/*.ts'],
+            rules: {
+              'no-console': 'error'
+            }
+          }
+        ]`;
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        // Should not throw error even if spread doesn't exist
+        expect(() => util.removeSpreadFromConfig(['**/*.ts'], 'baseConfig')).not.toThrow();
+      });
+    });
+
+    describe('parsing spread operators', () => {
+      it('should parse and preserve spread operators in rules', () => {
+        const content = `export default [
+          {
+            files: ['**/*.ts'],
+            rules: {
+              ...baseRules,
+              'no-console': 'error',
+              ...additionalRules
+            }
+          }
+        ]`;
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        const configs = util.getConfigs();
+        expect(configs).toHaveLength(1);
+        expect(configs[0].rules?.['...baseRules']).toBe(null);
+        expect(configs[0].rules?.['...additionalRules']).toBe(null);
+        expect(configs[0].rules?.['no-console']).toBe('error');
+      });
+
+      it('should parse and preserve spread operators in config', () => {
+        const content = `export default [
+          {
+            ...baseConfig,
+            files: ['**/*.ts'],
+            rules: {
+              'no-console': 'error'
+            },
+            ...overrides
+          }
+        ]`;
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        const configs = util.getConfigs();
+        expect(configs).toHaveLength(1);
+        expect(configs[0]['...baseConfig']).toBe(undefined);
+        expect(configs[0]['...overrides']).toBe(undefined);
+        expect(configs[0].files).toEqual(['**/*.ts']);
+      });
+
+      it('should serialize spread operators correctly with valueToString', () => {
+        const content = `export default [
+          {
+            files: ['**/*.ts'],
+            rules: {
+              ...baseRules,
+              'no-console': 'error'
+            }
+          }
+        ]`;
+        const sourceFile = project.createSourceFile('eslint.config.js', content);
+        const util = new EslintTsMorphUtil(sourceFile, 'eslint.config.js');
+
+        // Add a new rule to trigger serialization
+        util.addRule(['**/*.ts'], 'no-debugger', 'warn');
+
+        const result = sourceFile.getText();
+        expect(result).toContain('...baseRules');
+        expect(result).toContain("'no-console': 'error'");
+        expect(result).toContain("'no-debugger': 'warn'");
+      });
+    });
+  });
 });

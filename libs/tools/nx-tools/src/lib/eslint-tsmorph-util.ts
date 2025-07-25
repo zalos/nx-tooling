@@ -18,6 +18,10 @@ export interface EslintConfigOperations {
   addRule(filePattern: string[], ruleName: string, ruleConfig: EslintRuleConfig): void;
   removeRule(filePattern: string[], ruleName: string): void;
   updateRule(filePattern: string[], ruleName: string, ruleConfig: EslintRuleConfig): void;
+  addSpreadToRules(filePattern: string[], spreadExpression: string): void;
+  removeSpreadFromRules(filePattern: string[], spreadExpression: string): void;
+  addSpreadToConfig(filePattern: string[], spreadExpression: string): void;
+  removeSpreadFromConfig(filePattern: string[], spreadExpression: string): void;
   getConfigs(): EslintConfigObject[];
   save(): void;
 }
@@ -128,6 +132,13 @@ export class EslintTsMorphUtil implements EslintConfigOperations {
           // Handle other properties
           config[name] = this.parsePropertyValue(value);
         }
+      } else if (Node.isSpreadAssignment(property)) {
+        // Handle spread assignments in config objects
+        const spreadExpression = property.getExpression();
+        const spreadText = spreadExpression.getText();
+        
+        // Store the spread with a special key for later reconstruction
+        config[`...${spreadText}`] = undefined;
       }
     }
 
@@ -147,6 +158,13 @@ export class EslintTsMorphUtil implements EslintConfigOperations {
         const cleanName = ruleName.replace(/^['"](.*)['"]$/, '$1');
         const value = property.getInitializer();
         rules[cleanName] = this.parsePropertyValue(value) as EslintRuleConfig;
+      } else if (Node.isSpreadAssignment(property)) {
+        // Handle spread assignments in rules
+        const spreadExpression = property.getExpression();
+        const spreadText = spreadExpression.getText();
+        
+        // Store the spread with a special key for later reconstruction
+        rules[`...${spreadText}`] = null as unknown as EslintRuleConfig;
       }
     }
 
@@ -166,6 +184,13 @@ export class EslintTsMorphUtil implements EslintConfigOperations {
         const cleanName = name.replace(/^['"](.*)['"]$/, '$1');
         const value = property.getInitializer();
         result[cleanName] = this.parsePropertyValue(value);
+      } else if (Node.isSpreadAssignment(property)) {
+        // Handle spread assignments in config objects
+        const spreadExpression = property.getExpression();
+        const spreadText = spreadExpression.getText();
+        
+        // Store the spread with a special key for later reconstruction
+        result[`...${spreadText}`] = undefined;
       }
     }
 
@@ -838,6 +863,94 @@ ${properties.map(p => `  ${p.name}: ${p.initializer}`).join(',\n')}
               initializer: JSON.stringify(parserOptions)
             });
           }
+        }
+      }
+    }
+  }
+
+  /**
+   * Add a spread operator to the rules section of a config
+   */
+  addSpreadToRules(filePattern: string[], spreadExpression: string): void {
+    const config = this.findConfigByFiles(filePattern);
+    if (!config) {
+      throw new Error(`No config found for files: ${filePattern.join(', ')}`);
+    }
+
+    const rulesProperty = config.getProperty('rules');
+    if (!rulesProperty || !Node.isPropertyAssignment(rulesProperty)) {
+      throw new Error('Rules property must be an object literal');
+    }
+
+    const rulesObj = rulesProperty.getInitializer();
+    if (!Node.isObjectLiteralExpression(rulesObj)) {
+      throw new Error('Rules property must be an object literal');
+    }
+    
+    // Add spread assignment
+    rulesObj.addSpreadAssignment({ expression: spreadExpression });
+  }
+
+  /**
+   * Remove a spread operator from the rules section of a config
+   */
+  removeSpreadFromRules(filePattern: string[], spreadExpression: string): void {
+    const config = this.findConfigByFiles(filePattern);
+    if (!config) {
+      throw new Error(`No config found for files: ${filePattern.join(', ')}`);
+    }
+
+    const rulesProperty = config.getProperty('rules');
+    if (!rulesProperty || !Node.isPropertyAssignment(rulesProperty)) {
+      throw new Error('Rules property must be an object literal');
+    }
+
+    const rulesObj = rulesProperty.getInitializer();
+    if (!Node.isObjectLiteralExpression(rulesObj)) {
+      throw new Error('Rules property must be an object literal');
+    }
+    
+    // Find and remove matching spread assignments
+    for (const property of rulesObj.getProperties()) {
+      if (Node.isSpreadAssignment(property)) {
+        const expr = property.getExpression().getText();
+        if (expr === spreadExpression) {
+          property.remove();
+          break;
+        }
+      }
+    }
+  }
+
+  /**
+   * Add a spread operator to the config object (at the top level)
+   */
+  addSpreadToConfig(filePattern: string[], spreadExpression: string): void {
+    const config = this.findConfigByFiles(filePattern);
+    if (!config) {
+      throw new Error(`No config found for files: ${filePattern.join(', ')}`);
+    }
+
+    // Add spread assignment to the config object
+    config.addSpreadAssignment({ expression: spreadExpression });
+  }
+
+  /**
+   * Remove a spread operator from the config object (at the top level)
+   */
+  removeSpreadFromConfig(filePattern: string[], spreadExpression: string): void {
+    const config = this.findConfigByFiles(filePattern);
+    if (!config) {
+      throw new Error(`No config found for files: ${filePattern.join(', ')}`);
+    }
+
+    // Find and remove matching spread assignments
+    for (const property of config.getProperties()) {
+      if (Node.isSpreadAssignment(property)) {
+        const expr = property.getExpression().getText();
+        if (expr === spreadExpression) {
+          property.remove();
+          break;
         }
       }
     }
