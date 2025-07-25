@@ -1,5 +1,5 @@
 import { EslintTsMorphUtil, EslintConfigObject } from './eslint-tsmorph-util';
-import { Project, SourceFile } from 'ts-morph';
+import { Project } from 'ts-morph';
 import { Tree } from '@nx/devkit';
 
 describe('EslintTsMorphUtil', () => {
@@ -31,6 +31,50 @@ export default [
       expect(util).toBeInstanceOf(EslintTsMorphUtil);
     });
 
+    it('should create instance from SourceFile without filePath (uses source file path)', () => {
+      const sourceFile = project.createSourceFile('eslint.config.mjs', `
+export default [
+  {
+    files: ['**/*.ts'],
+    rules: {
+      'no-console': 'error'
+    }
+  }
+];
+      `);
+
+      // Test that constructor works without providing filePath
+      const util = new EslintTsMorphUtil(sourceFile);
+      expect(util).toBeInstanceOf(EslintTsMorphUtil);
+      
+      // Test that it can parse configs correctly
+      const configs = util.getConfigs();
+      expect(configs).toHaveLength(1);
+      expect(configs[0].files).toEqual(['**/*.ts']);
+    });
+
+    it('should create instance from SourceFile with explicit filePath', () => {
+      const sourceFile = project.createSourceFile('temp.config.mjs', `
+export default [
+  {
+    files: ['**/*.ts'],
+    rules: {
+      'no-unused-vars': 'warn'
+    }
+  }
+];
+      `);
+
+      // Test that constructor works with explicit filePath
+      const util = new EslintTsMorphUtil(sourceFile, 'custom-eslint.config.mjs');
+      expect(util).toBeInstanceOf(EslintTsMorphUtil);
+      
+      // Test that it can parse configs correctly
+      const configs = util.getConfigs();
+      expect(configs).toHaveLength(1);
+      expect(configs[0].files).toEqual(['**/*.ts']);
+    });
+
     it('should create instance from Tree', () => {
       const content = `
 export default [
@@ -46,6 +90,24 @@ export default [
 
       const util = new EslintTsMorphUtil(mockTree, 'eslint.config.mjs');
       expect(util).toBeInstanceOf(EslintTsMorphUtil);
+    });
+
+    it('should throw error when using Tree without filePath', () => {
+      const content = `
+export default [
+  {
+    files: ['**/*.ts'],
+    rules: {
+      'no-console': 'error'
+    }
+  }
+];
+      `;
+      (mockTree.read as jest.Mock).mockReturnValue(Buffer.from(content));
+
+      expect(() => {
+        new EslintTsMorphUtil(mockTree);
+      }).toThrow('filePath is required when using Tree constructor');
     });
 
     it('should throw error if no export default found', () => {

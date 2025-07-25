@@ -28,21 +28,15 @@ yarn add @your-scope/nx-tools
 import { EslintTsMorphUtil } from '@your-scope/nx-tools';
 import { Tree } from '@nx/devkit';
 
-// Initialize with Nx Tree
+// Initialize utility
 const eslintUtil = new EslintTsMorphUtil(tree, 'eslint.config.mjs');
 
-// Add a new configuration
-eslintUtil.addOrUpdateConfig('**/*.ts', {
-  languageOptions: {
-    parser: '@typescript-eslint/parser',
-    parserOptions: {
-      ecmaVersion: 2022,
-      sourceType: 'module'
-    }
-  },
+// Add or update configuration
+eslintUtil.addOrUpdateConfig({
+  files: ['**/*.ts'],
   rules: {
     '@typescript-eslint/no-unused-vars': 'error',
-    'prefer-const': 'warn'
+    '@typescript-eslint/explicit-function-return-type': 'warn'
   }
 });
 
@@ -54,9 +48,9 @@ eslintUtil.save();
 
 ```typescript
 // Add Playwright configuration with spread operators
-eslintUtil.addOrUpdateConfig('tests/**', {
-  '...playwright.configs[\'flat/recommended\']': true,
+eslintUtil.addOrUpdateConfig({
   files: ['tests/**'],
+  '...playwright.configs[\'flat/recommended\']': true,
   rules: {
     '...playwright.configs[\'flat/recommended\'].rules': true,
     // Customize Playwright rules
@@ -93,7 +87,7 @@ importUtil.save();
 const eslintUtil = new EslintTsMorphUtil(tree, 'eslint.config.mjs');
 
 // Add a single rule
-eslintUtil.addRule('**/*.ts', 'no-console', 'warn');
+eslintUtil.addRule(['**/*.ts'], 'no-console', 'warn');
 ```
 
 **Before:**
@@ -171,10 +165,10 @@ export default [
 
 ```typescript
 // Update existing rule
-eslintUtil.updateRule('**/*.ts', 'no-console', 'error');
+eslintUtil.updateRule(['**/*.ts'], 'no-console', 'error');
 
 // Remove a rule
-eslintUtil.removeRule('**/*.ts', 'no-console');
+eslintUtil.removeRule(['**/*.ts'], 'no-console');
 
 // Check if rule exists
 if (eslintUtil.hasRule('**/*.ts', 'no-console')) {
@@ -192,7 +186,8 @@ console.log(ruleConfig); // 'error' | ['error', options] | etc.
 
 ```typescript
 // Set up ESLint for Angular components
-eslintUtil.addOrUpdateConfig('**/*.component.ts', {
+eslintUtil.addOrUpdateConfig({
+  files: ['**/*.component.ts'],
   extends: ['@angular-eslint/recommended'],
   rules: {
     '@angular-eslint/component-selector': [
@@ -271,7 +266,8 @@ export default [
 
 ```typescript
 // Configure template files
-eslintUtil.addOrUpdateConfig('**/*.component.html', {
+eslintUtil.addOrUpdateConfig({
+  files: ['**/*.component.html'],
   extends: ['@angular-eslint/template/recommended'],
   rules: {
     '@angular-eslint/template/no-negated-async': 'error'
@@ -404,7 +400,8 @@ eslintUtil.addOrUpdateConfig(['**/*.spec.ts', '**/*.test.ts'], {
 });
 
 // Playwright E2E tests
-eslintUtil.addOrUpdateConfig('**/*.e2e-spec.ts', {
+eslintUtil.addOrUpdateConfig({
+  files: ['**/*.e2e-spec.ts'],
   extends: ['plugin:playwright/playwright-test'],
   rules: {
     'playwright/expect-expect': 'error',
@@ -417,9 +414,9 @@ eslintUtil.addOrUpdateConfig('**/*.e2e-spec.ts', {
 
 ```typescript
 // Simple Playwright configuration with modern flat config syntax
-eslintUtil.addOrUpdateConfig('tests/**', {
-  '...playwright.configs[\'flat/recommended\']': true,
+eslintUtil.addOrUpdateConfig({
   files: ['tests/**'],
+  '...playwright.configs[\'flat/recommended\']': true,
   rules: {
     '...playwright.configs[\'flat/recommended\'].rules': true,
     // Customize Playwright rules
@@ -431,10 +428,10 @@ eslintUtil.addOrUpdateConfig('tests/**', {
 
 ```typescript
 // Advanced Playwright configuration using spread operator (recommended approach)
-eslintUtil.addOrUpdateConfig('**/*.e2e-spec.ts', {
+eslintUtil.addOrUpdateConfig({
+  files: ['**/*.e2e-spec.ts', 'e2e/**/*.ts'],
   // Use spread operator to extend existing configurations
   '...playwright.configs.recommended': true,
-  files: ['**/*.e2e-spec.ts', 'e2e/**/*.ts'],
   languageOptions: {
     parser: '@typescript-eslint/parser'
   },
@@ -557,10 +554,11 @@ const configs = eslintUtil.getConfigs();
 console.log(configs);
 
 // Remove a configuration entirely
-eslintUtil.removeConfig('**/*.spec.ts');
+eslintUtil.removeConfig(['**/*.spec.ts']);
 
 // Add configuration with complex language options
-eslintUtil.addOrUpdateConfig('**/*.ts', {
+eslintUtil.addOrUpdateConfig({
+  files: ['**/*.ts'],
   languageOptions: {
     parser: '@typescript-eslint/parser',
     parserOptions: {
@@ -681,7 +679,8 @@ console.log(configs[0].rules['no-console']); // 'error'
 ```
 
 // Modern flat config with spread operator for extending configurations
-eslintUtil.addOrUpdateConfig('**/*.ts', {
+eslintUtil.addOrUpdateConfig({
+  files: ['**/*.ts'],
   // Spread operator usage for extending configurations
   '...@typescript-eslint/recommended': true,
   '...@typescript-eslint/recommended-requiring-type-checking': true,
@@ -1008,7 +1007,8 @@ export default async function myGenerator(tree: Tree, options: MyGeneratorOption
   // Configure ESLint for new project
   const eslintUtil = new EslintTsMorphUtil(tree, `${options.projectRoot}/eslint.config.mjs`);
   
-  eslintUtil.addOrUpdateConfig('**/*.ts', {
+  eslintUtil.addOrUpdateConfig({
+    files: ['**/*.ts'],
     extends: ['@typescript-eslint/recommended'],
     rules: {
       '@typescript-eslint/no-unused-vars': 'error'
@@ -1040,10 +1040,11 @@ function migrateEslintConfig(tree: Tree, projectPath: string) {
   const eslintUtil = new EslintTsMorphUtil(tree, `${projectPath}/eslint.config.mjs`);
   
   // Remove old configurations
-  eslintUtil.removeConfig('**/*.js');
+  eslintUtil.removeConfig(['**/*.js']);
   
   // Add new modern configurations
-  eslintUtil.addOrUpdateConfig('**/*.ts', {
+  eslintUtil.addOrUpdateConfig({
+    files: ['**/*.ts'],
     languageOptions: {
       parser: '@typescript-eslint/parser',
       parserOptions: {
@@ -1193,23 +1194,31 @@ export default async function e2eGenerator(tree: Tree, options: E2EGeneratorOpti
 ### EslintTsMorphUtil
 
 #### Constructor
-- `new EslintTsMorphUtil(sourceFile: SourceFile, filePath: string)`
-- `new EslintTsMorphUtil(tree: Tree, filePath: string)`
+- `new EslintTsMorphUtil(sourceFile: SourceFile)`: Create from SourceFile (filePath auto-detected)
+- `new EslintTsMorphUtil(sourceFile: SourceFile, filePath: string)`: Create from SourceFile with custom path
+- `new EslintTsMorphUtil(tree: Tree, filePath: string)`: Create from Tree (filePath required)
 
 #### Methods
 - `getConfigs()`: Get all configurations
-- `addOrUpdateConfig(files: string | string[], config: EslintConfig)`: Add or update configuration
-- `removeConfig(files: string | string[])`: Remove configuration
-- `addRule(files: string | string[], ruleName: string, ruleValue: any)`: Add single rule
-- `addRules(files: string | string[], rules: Record<string, any>)`: Add multiple rules
-- `removeRule(files: string | string[], ruleName: string)`: Remove rule
-- `updateRule(files: string | string[], ruleName: string, ruleValue: any)`: Update rule
-- `hasRule(files: string | string[], ruleName: string)`: Check if rule exists
-- `getRule(files: string | string[], ruleName: string)`: Get rule configuration
-- `addSpreadToRules(files: string[], spreadExpression: string)`: Add spread operator to rules section
-- `removeSpreadFromRules(files: string[], spreadExpression: string)`: Remove spread operator from rules section
-- `addSpreadToConfig(files: string[], spreadExpression: string)`: Add spread operator to config object
-- `removeSpreadFromConfig(files: string[], spreadExpression: string)`: Remove spread operator from config object
+- `addOrUpdateConfig(config: EslintConfigObject)`: Add or update configuration
+- `removeConfig(filePattern: string[])`: Remove configuration
+- `addRule(filePattern: string[], ruleName: string, ruleConfig: EslintRuleConfig)`: Add single rule
+- `addMultipleRules(filePattern: string[], rules: Record<string, EslintRuleConfig>)`: Add multiple rules
+- `removeRule(filePattern: string[], ruleName: string)`: Remove rule
+- `removeMultipleRules(filePattern: string[], ruleNames: string[])`: Remove multiple rules
+- `updateRule(filePattern: string[], ruleName: string, ruleConfig: EslintRuleConfig)`: Update rule
+- `ensureRule(filePattern: string[], ruleName: string, ruleConfig: EslintRuleConfig)`: Ensure rule exists with config
+- `removeRuleIfExists(filePattern: string[], ruleName: string)`: Remove rule if it exists
+- `hasRule(filePattern: string[], ruleName: string): boolean`: Check if rule exists
+- `addSpreadToRules(filePattern: string[], spreadExpression: string)`: Add spread operator to rules section
+- `removeSpreadFromRules(filePattern: string[], spreadExpression: string)`: Remove spread operator from rules section
+- `addSpreadToConfig(filePattern: string[], spreadExpression: string)`: Add spread operator to config object
+- `removeSpreadFromConfig(filePattern: string[], spreadExpression: string)`: Remove spread operator from config object
+- `hasConfigForPattern(filePattern: string[]): boolean`: Check if config exists for pattern
+- `clearAllRules(filePattern: string[])`: Clear all rules for pattern
+- `mergeRulesFromPattern(sourcePattern: string[], targetPattern: string[])`: Merge rules between patterns
+- `copyConfigToPattern(sourcePattern: string[], targetPattern: string[])`: Copy config between patterns
+- `setLanguageOptions(filePattern: string[], parser?: string | Record<string, unknown>, parserOptions?: Record<string, unknown>)`: Set language options
 - `save()`: Save changes to file system
 - `getContent()`: Get updated file content
 

@@ -98,7 +98,15 @@ export class EslintTsMorphUtil implements EslintConfigOperations {
   private configArray?: ArrayLiteralExpression;
 
   /**
-   * Creates a new EslintTsMorphUtil instance.
+   * Creates a new EslintTsMorphUtil instance from a TSMorph SourceFile.
+   * The file path will be automatically detected from the SourceFile.
+   * 
+   * @param sourceFile - TSMorph SourceFile for direct AST manipulation
+   */
+  constructor(sourceFile: SourceFile);
+  
+  /**
+   * Creates a new EslintTsMorphUtil instance from a TSMorph SourceFile with custom path.
    * 
    * @param sourceFile - TSMorph SourceFile for direct AST manipulation
    * @param filePath - Path to the ESLint configuration file
@@ -106,21 +114,25 @@ export class EslintTsMorphUtil implements EslintConfigOperations {
   constructor(sourceFile: SourceFile, filePath: string);
   
   /**
-   * Creates a new EslintTsMorphUtil instance.
+   * Creates a new EslintTsMorphUtil instance from an Nx Tree.
    * 
    * @param tree - Nx Tree for workspace file operations
    * @param filePath - Path to the ESLint configuration file
    */
   constructor(tree: Tree, filePath: string);
   
-  constructor(sourceFileOrTree: SourceFile | Tree, filePath: string) {
-    this.filePath = filePath;
-    
+  constructor(sourceFileOrTree: SourceFile | Tree, filePath?: string) {
     if (this.isSourceFile(sourceFileOrTree)) {
       this.sourceFile = sourceFileOrTree;
       this.project = sourceFileOrTree.getProject();
+      // Use provided filePath or get it from the SourceFile
+      this.filePath = filePath || sourceFileOrTree.getFilePath();
     } else {
+      if (!filePath) {
+        throw new Error('filePath is required when using Tree constructor');
+      }
       this.tree = sourceFileOrTree;
+      this.filePath = filePath;
       this.project = new Project();
       
       // Read file content from tree
